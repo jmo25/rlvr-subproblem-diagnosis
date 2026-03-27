@@ -109,7 +109,7 @@ def run_inference_vllm(
         gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
         dtype=DTYPE,
         trust_remote_code=True,
-        max_model_len=MAX_NEW_TOKENS + 2048,  # prompt + generation
+        max_model_len=4096,  # Qwen2.5-Math-7B max position embeddings
     )
 
     sampling_params = SamplingParams(
@@ -158,6 +158,8 @@ def load_all_results(model_name: str) -> Dict[str, List[str]]:
 
 
 def main():
+    global TENSOR_PARALLEL_SIZE
+
     parser = argparse.ArgumentParser(description="Run vLLM inference for experiments")
     parser.add_argument("--model", choices=list(MODELS.keys()) + ["all"],
                         default="all", help="Which model to run")
@@ -166,13 +168,13 @@ def main():
     parser.add_argument("--num-samples", type=int, default=MAX_K,
                         help="Number of samples per subproblem")
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--tp", type=int, default=TENSOR_PARALLEL_SIZE,
+    parser.add_argument("--tp", type=int, default=None,
                         help="Tensor parallel size")
     args = parser.parse_args()
 
     # Override TP if specified
-    global TENSOR_PARALLEL_SIZE
-    TENSOR_PARALLEL_SIZE = args.tp
+    if args.tp is not None:
+        TENSOR_PARALLEL_SIZE = args.tp
 
     # Load data
     cache_path = os.path.join(RESULTS_DIR, "benchmark_data.json")
