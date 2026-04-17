@@ -198,7 +198,7 @@ def analyze_path_divergence(
         overlap = compute_reasoning_overlap(cot, p.thinking_splits)
 
         # Classify
-        classification = classify_divergence_auto(l0_correct, l0_correct, level_results)
+        classification = classify_divergence_auto(overlap, l0_correct, level_results)
         classification_counts[classification] += 1
 
         # Track stats
