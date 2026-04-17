@@ -12,6 +12,7 @@ import time
 import argparse
 from typing import List, Dict, Optional
 from dataclasses import asdict
+import _vllm_patch
 
 from config import (
     MODELS, MAX_K, TEMPERATURE, TOP_P, MAX_NEW_TOKENS,
@@ -109,7 +110,7 @@ def run_inference_vllm(
         gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
         dtype=DTYPE,
         trust_remote_code=True,
-        max_model_len=4096,  # Qwen2.5-Math-7B max position embeddings
+        max_model_len=4096,
     )
 
     sampling_params = SamplingParams(

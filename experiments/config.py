@@ -15,9 +15,9 @@ FIGURES_DIR = os.path.join(EXPERIMENT_DIR, "figures")
 
 # ── Models ─────────────────────────────────────────────────────────────────
 MODELS = {
-    "base": "Qwen/Qwen2.5-Math-7B",
-    "stage1": "sparkle-reasoning/SparkleRL-7B-Stage1",
-    "stage2": "sparkle-reasoning/SparkleRL-7B-Stage2-aug",
+    "base": "/root/autodl-tmp/hf_cache/Qwen2.5-Math-7B",
+    "stage1": "/root/autodl-tmp/hf_cache/SparkleRL-7B-Stage1",
+    "stage2": "/root/autodl-tmp/hf_cache/SparkleRL-7B-Stage2-aug",
 }
 
 # ── Dataset ────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ NUM_THINKING_LEVELS = 4  # number of progressive reasoning steps (levels 1-4)
 # Level 1..4 = progressive amounts of reasoning provided
 
 # ── Sampling ───────────────────────────────────────────────────────────────
-K_VALUES = [1, 2, 4, 8, 16, 32]
+K_VALUES = [1, 2, 4, 8, 16, 32, 64, 128]
 MAX_K = max(K_VALUES)  # we sample MAX_K responses and compute pass@k for subsets
 TEMPERATURE = 0.6
 TOP_P = 1.0
