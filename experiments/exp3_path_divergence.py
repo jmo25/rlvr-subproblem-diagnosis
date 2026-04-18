@@ -151,8 +151,18 @@ def analyze_path_divergence(
     """
     Analyze path divergence for a single model.
 
-    Identifies cases where the model answers level 0 correctly but
-    fails at some subproblem levels, then characterizes the divergence.
+    For each problem:
+      - Check *all* L0 samples (not just the first) for correctness.
+        Every L0-correct sample becomes a separate case record — we classify
+        its CoT's overlap with the SPARKLE decomposition independently.
+      - For subproblem levels 1..N, use pass@K (any of K samples correct) to
+        determine whether the model can complete that step given scaffold.
+      - "has_divergence" = problem has at least one L0-correct sample, but
+        at least one subproblem level has zero correct samples.
+
+    Returns per-problem stats (n_problems_*) and per-sample classification
+    counts over the L0-correct solutions, giving >4x the data for H3 vs.
+    the prior pass@1-only implementation.
     """
     cached = load_all_results(model_name)
     if not cached:
@@ -162,83 +172,106 @@ def analyze_path_divergence(
     classification_counts = Counter()
     overlap_stats = defaultdict(list)
 
+    n_problems_examined = 0
+    n_problems_l0_correct = 0
+    n_problems_divergent = 0
+    n_problems_l0_fail = 0
+
     for p in problems:
         gt = p.ground_truth
 
-        # Check level 0 (first response only for simplicity)
         key0 = f"{p.problem_id}:0"
         if key0 not in cached:
             continue
+        n_problems_examined += 1
 
         responses_l0 = cached[key0]
-        l0_correct = grade_response(responses_l0[0], gt)
+        # Check ALL L0 samples, not just the first
+        l0_correct_indices = [
+            i for i, r in enumerate(responses_l0) if grade_response(r, gt)
+        ]
+        any_l0_correct = len(l0_correct_indices) > 0
 
-        # Check all levels
+        # For levels 1..N, use pass@K (any sample correct) as the success signal.
+        # This answers "can the model complete this step given ground-truth scaffold?",
+        # which is independent of which L0 sample we picked.
         level_results = {}
         for level in range(NUM_THINKING_LEVELS + 1):
             key = f"{p.problem_id}:{level}"
             if key not in cached:
                 continue
             responses = cached[key]
-            level_results[level] = grade_response(responses[0], gt)
+            level_results[level] = any(grade_response(r, gt) for r in responses)
 
-        # Identify divergence: correct at level 0, fails at some level
-        has_divergence = l0_correct and any(
+        has_divergence = any_l0_correct and any(
             not level_results.get(l, True)
             for l in range(1, NUM_THINKING_LEVELS + 1)
         )
 
-        # Extract CoT from the correct level-0 response
-        if l0_correct:
-            cot = extract_cot_from_response(responses_l0[0])
-        else:
-            cot = ""
+        if not any_l0_correct:
+            # Problem the model can't solve unscaffolded — no path to analyze.
+            n_problems_l0_fail += 1
+            continue
 
-        # Compute overlap with reference reasoning
-        overlap = compute_reasoning_overlap(cot, p.thinking_splits)
+        n_problems_l0_correct += 1
+        if has_divergence:
+            n_problems_divergent += 1
 
-        # Classify
-        classification = classify_divergence_auto(overlap, l0_correct, level_results)
-        classification_counts[classification] += 1
+        # Per-sample classification: every correct L0 sample contributes one
+        # classification and one overlap data point.
+        for idx in l0_correct_indices:
+            cot = extract_cot_from_response(responses_l0[idx])
+            overlap = compute_reasoning_overlap(cot, p.thinking_splits)
+            classification = classify_divergence_auto(
+                overlap, True, level_results
+            )
+            classification_counts[classification] += 1
 
-        # Track stats
-        overlap_stats["ngram_overlap"].append(overlap["ngram_overlap"])
-        overlap_stats["step_coverage"].append(overlap["step_coverage"])
+            overlap_stats["ngram_overlap"].append(overlap["ngram_overlap"])
+            overlap_stats["step_coverage"].append(overlap["step_coverage"])
 
-        if has_divergence or l0_correct:
             divergence_cases.append({
                 "problem_id": p.problem_id,
+                "sample_idx": idx,
                 "difficulty": p.difficulty,
                 "domain": p.domain,
-                "level0_correct": l0_correct,
+                "level0_correct": True,
                 "level_results": level_results,
                 "has_divergence": has_divergence,
                 "classification": classification,
                 "overlap": overlap,
                 "question_preview": p.question_raw[:200],
-                # Store CoT for manual review (first N chars)
-                "cot_preview": cot[:500] if cot else "",
-                "failed_levels": [l for l in range(1, NUM_THINKING_LEVELS + 1)
-                                  if not level_results.get(l, True)],
+                "cot_preview": cot[:500],
+                "failed_levels": [
+                    l for l in range(1, NUM_THINKING_LEVELS + 1)
+                    if not level_results.get(l, True)
+                ],
             })
 
-    # Summary statistics
-    n_total = len([c for c in divergence_cases])
-    n_l0_correct = sum(1 for c in divergence_cases if c["level0_correct"])
-    n_divergent = sum(1 for c in divergence_cases if c["has_divergence"])
+    n_l0_correct_samples = len(divergence_cases)
 
     return {
         "model": model_name,
-        "n_total": n_total,
-        "n_level0_correct": n_l0_correct,
-        "n_divergent": n_divergent,
-        "divergence_rate": n_divergent / n_l0_correct if n_l0_correct else 0,
+        "n_problems_examined": n_problems_examined,
+        "n_problems_l0_correct": n_problems_l0_correct,
+        "n_problems_l0_fail": n_problems_l0_fail,
+        "n_problems_divergent": n_problems_divergent,
+        "n_l0_correct_samples": n_l0_correct_samples,
+        "divergence_rate": (
+            n_problems_divergent / n_problems_l0_correct
+            if n_problems_l0_correct else 0
+        ),
+        # Classifications are over L0-correct samples (not problems).
         "classification_counts": dict(classification_counts),
         "overlap_stats": {
             "mean_ngram_overlap": float(np.mean(overlap_stats["ngram_overlap"])) if overlap_stats["ngram_overlap"] else 0,
             "mean_step_coverage": float(np.mean(overlap_stats["step_coverage"])) if overlap_stats["step_coverage"] else 0,
         },
         "divergence_cases": divergence_cases,
+        # Backward-compatible aliases (downstream scripts/figures used these)
+        "n_total": n_problems_examined,
+        "n_level0_correct": n_problems_l0_correct,
+        "n_divergent": n_problems_divergent,
     }
 
 
@@ -279,22 +312,27 @@ def print_divergence_summary(all_results: Dict[str, dict]):
     print("=" * 80)
 
     for model_name, result in all_results.items():
-        n_total = result.get("n_total", 0)
-        n_l0 = result.get("n_level0_correct", 0)
-        n_div = result.get("n_divergent", 0)
+        n_examined = result.get("n_problems_examined", 0)
+        n_l0 = result.get("n_problems_l0_correct", 0)
+        n_div = result.get("n_problems_divergent", 0)
+        n_samples = result.get("n_l0_correct_samples", 0)
         rate = result.get("divergence_rate", 0)
 
         print(f"\n--- {model_name} ---")
-        print(f"  Problems analyzed: {n_total}")
-        print(f"  Level 0 correct:   {n_l0} ({n_l0/n_total*100:.1f}%)" if n_total else "")
-        print(f"  Divergent cases:   {n_div} ({rate*100:.1f}% of correct)")
+        print(f"  Problems examined:     {n_examined}")
+        if n_examined:
+            print(f"  Problems with ≥1 L0-correct sample: {n_l0} ({n_l0/n_examined*100:.1f}%)")
+        print(f"  L0-correct samples (total):          {n_samples}")
+        print(f"  Divergent problems:    {n_div} ({rate*100:.1f}% of L0-correct problems)")
 
-        print(f"\n  Classification breakdown:")
+        # Per-sample classification over L0-correct solutions
+        total_samples = sum(result.get("classification_counts", {}).values())
+        print(f"\n  Classification breakdown (per L0-correct sample, n={total_samples}):")
         for cls, count in sorted(result.get("classification_counts", {}).items()):
-            pct = count / n_total * 100 if n_total else 0
+            pct = count / total_samples * 100 if total_samples else 0
             print(f"    {cls:<25} {count:>5} ({pct:.1f}%)")
 
-        print(f"\n  Overlap statistics:")
+        print(f"\n  Overlap statistics (over L0-correct samples):")
         stats = result.get("overlap_stats", {})
         print(f"    Mean n-gram overlap:  {stats.get('mean_ngram_overlap', 0):.3f}")
         print(f"    Mean step coverage:   {stats.get('mean_step_coverage', 0):.3f}")
