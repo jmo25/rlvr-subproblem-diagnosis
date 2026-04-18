@@ -184,3 +184,7 @@ outputs/
 experiments/phase*/
 experiments/results*/
 experiments/figures*/
+
+# Local-only markdown notes
+CLAUDE.md
+CS639_proposal.md
