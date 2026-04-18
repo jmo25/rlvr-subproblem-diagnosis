@@ -23,11 +23,13 @@ MODEL_COLORS = {
     "base": "#1f77b4",     # blue
     "stage1": "#ff7f0e",   # orange
     "stage2": "#2ca02c",   # green
+    "r1distill": "#9467bd", # purple
 }
 MODEL_LABELS = {
     "base": "Qwen-2.5-Math-7B (Base)",
     "stage1": "SparkleRL Stage 1",
     "stage2": "SparkleRL Stage 2 (Aug)",
+    "r1distill": "R1-Distill-Qwen-7B",
 }
 
 

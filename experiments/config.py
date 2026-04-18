@@ -18,6 +18,7 @@ MODELS = {
     "base": "/root/autodl-tmp/hf_cache/Qwen2.5-Math-7B",
     "stage1": "/root/autodl-tmp/hf_cache/SparkleRL-7B-Stage1",
     "stage2": "/root/autodl-tmp/hf_cache/SparkleRL-7B-Stage2-aug",
+    "r1distill": "/root/autodl-tmp/hf_cache/DeepSeek-R1-Distill-Qwen-7B",
 }
 
 # ── Dataset ────────────────────────────────────────────────────────────────
