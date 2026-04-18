@@ -5,15 +5,20 @@
 # =============================================================================
 #
 # Usage:
-#   ./run_all.sh                   # Full run (all models, all problems)
-#   ./run_all.sh --debug           # Debug mode (5 problems, k=4)
-#   ./run_all.sh --model base      # Run only base model
-#   ./run_all.sh --skip-inference  # Skip inference, just run analysis
+#   ./run_all.sh --profile phase1        # N=40, k up to 128 (Exp 1 crossover)
+#   ./run_all.sh --profile phase2        # N=500, k up to 16 (Exp 2/3, default)
+#   ./run_all.sh --profile r1_test --model r1distill  # Long-CoT model
+#   ./run_all.sh --debug                 # alias for --profile debug
+#   ./run_all.sh --model base            # Run only base model
+#   ./run_all.sh --skip-inference        # Skip inference, just run analysis
+#
+# Profiles are defined in config.py (PROFILES dict). They set MAX_PROBLEMS,
+# K_VALUES, MAX_NEW_TOKENS, MAX_MODEL_LEN. Override individual values with
+# --max-problems / --num-samples / etc.
 #
 # Prerequisites:
 #   - CUDA-capable GPU(s)
 #   - conda activate sparkle
-#   - pip install vllm matplotlib numpy
 # =============================================================================
 
 set -euo pipefail
@@ -23,16 +28,18 @@ cd "$SCRIPT_DIR"
 
 # Defaults
 MODEL="all"
+PROFILE=""
 MAX_PROBLEMS=""
-NUM_SAMPLES=32
+NUM_SAMPLES=""
 BATCH_SIZE=64
 TP=1
 SKIP_INFERENCE=false
-DEBUG=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --profile)
+            PROFILE="$2"; shift 2;;
         --model)
             MODEL="$2"; shift 2;;
         --max-problems)
@@ -46,32 +53,35 @@ while [[ $# -gt 0 ]]; do
         --skip-inference)
             SKIP_INFERENCE=true; shift;;
         --debug)
-            DEBUG=true; shift;;
+            PROFILE="debug"; shift;;
         *)
             echo "Unknown option: $1"; exit 1;;
     esac
 done
 
-# Debug mode overrides
-if [ "$DEBUG" = true ]; then
-    MAX_PROBLEMS=5
-    NUM_SAMPLES=4
-    echo "=== DEBUG MODE: 5 problems, k=4 ==="
+# Export profile for config.py to pick up
+if [ -n "$PROFILE" ]; then
+    export EXP_PROFILE="$PROFILE"
 fi
 
-# Build common args
+# Build CLI overrides (non-empty args override profile defaults)
 COMMON_ARGS=""
 if [ -n "$MAX_PROBLEMS" ]; then
-    COMMON_ARGS="--max-problems $MAX_PROBLEMS"
+    COMMON_ARGS="$COMMON_ARGS --max-problems $MAX_PROBLEMS"
+fi
+INFERENCE_ARGS="$COMMON_ARGS"
+if [ -n "$NUM_SAMPLES" ]; then
+    INFERENCE_ARGS="$INFERENCE_ARGS --num-samples $NUM_SAMPLES"
 fi
 
 echo "============================================================"
 echo " CS639: Subproblem-Level Diagnosis of RLVR"
 echo "============================================================"
+echo " Profile:     ${PROFILE:-phase2 (default)}"
 echo " Model:       $MODEL"
-echo " Samples:     $NUM_SAMPLES"
 echo " TP:          $TP"
-echo " Max problems: ${MAX_PROBLEMS:-all}"
+echo " Max probs:   ${MAX_PROBLEMS:-from profile}"
+echo " Num samples: ${NUM_SAMPLES:-from profile MAX_K}"
 echo " Skip inf:    $SKIP_INFERENCE"
 echo "============================================================"
 
@@ -90,10 +100,9 @@ if [ "$SKIP_INFERENCE" = false ]; then
 
     python inference.py \
         --model "$MODEL" \
-        --num-samples "$NUM_SAMPLES" \
         --batch-size "$BATCH_SIZE" \
         --tp "$TP" \
-        $COMMON_ARGS
+        $INFERENCE_ARGS
 
     echo ">>> Inference complete."
 else

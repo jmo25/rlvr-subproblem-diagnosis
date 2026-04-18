@@ -15,8 +15,8 @@ from dataclasses import asdict
 import _vllm_patch
 
 from config import (
-    MODELS, MAX_K, TEMPERATURE, TOP_P, MAX_NEW_TOKENS,
-    TENSOR_PARALLEL_SIZE, GPU_MEMORY_UTILIZATION, DTYPE,
+    MODELS, MAX_K, MAX_PROBLEMS, TEMPERATURE, TOP_P, MAX_NEW_TOKENS,
+    TENSOR_PARALLEL_SIZE, GPU_MEMORY_UTILIZATION, DTYPE, MAX_MODEL_LEN,
     RESULTS_DIR,
 )
 from data_loader import (
@@ -110,7 +110,7 @@ def run_inference_vllm(
         gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
         dtype=DTYPE,
         trust_remote_code=True,
-        max_model_len=4096,
+        max_model_len=MAX_MODEL_LEN,
     )
 
     sampling_params = SamplingParams(
@@ -164,8 +164,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run vLLM inference for experiments")
     parser.add_argument("--model", choices=list(MODELS.keys()) + ["all"],
                         default="all", help="Which model to run")
-    parser.add_argument("--max-problems", type=int, default=None,
-                        help="Limit number of problems (for debugging)")
+    parser.add_argument("--max-problems", type=int, default=MAX_PROBLEMS,
+                        help=f"Limit number of problems (default from profile: {MAX_PROBLEMS})")
     parser.add_argument("--num-samples", type=int, default=MAX_K,
                         help="Number of samples per subproblem")
     parser.add_argument("--batch-size", type=int, default=64)
