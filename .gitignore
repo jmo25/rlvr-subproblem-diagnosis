@@ -179,3 +179,8 @@ temp*.yaml
 /data/
 /qwen
 outputs/
+# CS 639 project: local-only artifacts
+.claude/
+experiments/phase*/
+experiments/results*/
+experiments/figures*/
